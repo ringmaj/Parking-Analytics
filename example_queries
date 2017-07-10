@@ -1,0 +1,334 @@
+--1.	Remove all duplicate parking spaces and INSERT INTO person tables
+
+
+DROP TABLE IF EXISTS personDuplicate;
+CREATE TABLE `personDuplicate` (
+	`st_id`	int(9) NOT NULL,
+	`name`	varchar(25) NOT NULL,
+	`sex`	varchar(6) NOT NULL,
+	`p_id`	int(3) NOT NULL,
+	`permit_type`	varchar(10) NOT NULL,
+	`license`	varchar(7) NOT NULL,
+	`ticket`	int(1) NOT NULL,
+	`phone`	varchar(15) NOT NULL,
+	`age`	int(2) NOT NULL
+);
+INSERT INTO personDuplicate
+SELECT *
+FROM person;
+
+
+DELETE
+FROM person
+WHERE 1=1;
+
+
+INSERT INTO person
+SELECT *
+FROM
+  (SELECT *
+   FROM personDuplicate
+   GROUP BY p_id);
+
+
+DROP TABLE IF EXISTS personDuplicate;
+
+
+
+
+
+--2. 
+
+DELETE
+FROM s_parks
+WHERE 1=1;
+
+
+
+
+--3. 
+
+INSERT INTO s_parks
+SELECT person.p_id,
+       spot_types.row,
+       spot_types.col,
+       person.st_id,
+       person.permit_type
+FROM person,
+     spot_types
+WHERE person.p_id=spot_types.p_id
+GROUP BY person.st_id;
+
+
+
+
+--4.
+
+INSERT INTO taps_parks
+SELECT taps.p_id,
+       spot_types.row,
+       spot_types.col,
+       taps.t_id,
+       taps.permit_type
+FROM taps,
+     spot_types
+WHERE taps.p_id=spot_types.p_id
+GROUP BY taps.t_id;
+
+
+
+
+--5.
+
+INSERT INTO taps_reserves
+SELECT spot_types.p_id,
+       spot_types.row,
+       spot_types.col,
+       spot_types.permit_type,
+       NULL,
+       NULL,
+       NULL
+FROM spot_types
+WHERE spot_types.permit_type='RESERVED';
+
+
+
+
+
+--6.
+
+UPDATE taps_reserves
+SET event_title = 'Commencement';
+
+
+
+
+
+
+
+--7. 
+
+SELECT ((Count(p_occupied)*1.0)/total)*100
+FROM spot_types,
+  (SELECT count(*) AS total
+   FROM spot_types)
+WHERE p_occupied=1;
+
+
+
+
+
+
+--8. Select the REGULAR parking spots at which the students parked in 
+
+
+
+SELECT s_parks.row,
+       s_parks.col
+FROM person,
+     s_parks
+WHERE person.p_id=s_parks.p_id
+  AND s_parks.permit_type='Regular';
+
+
+
+
+--9.Select the student's’ name, permit type and phone numbers that work in TAPS.
+
+
+
+SELECT person.name,
+       person.phone,
+       person.permit_type
+FROM person,
+     taps
+WHERE person.st_id=taps.t_id;
+
+
+
+
+--10. Select the specific parking spots and permit type at which students in taps are occupying the space. 
+
+
+SELECT spot_types.row,
+       spot_types.col,
+       spot_types.permit_type
+FROM spot_types,
+     person,
+     taps,
+     s_parks
+WHERE taps.t_id=person.st_id
+  AND person.p_id = s_parks.p_id
+  AND s_parks.p_id=spot_types.p_id
+  AND spot_types.p_occupied =1;
+
+
+
+
+
+--11. Who are currently occupying the Handicapped spots?
+
+
+SELECT person.name
+FROM person,
+     s_parks,
+     spot_types
+WHERE person.p_id=s_parks.p_id
+  AND s_parks.p_id=spot_types.p_id
+  AND spot_types.p_occupied =1
+  AND spot_types.permit_type='Handicapped';
+
+
+
+
+
+--12. How many spots are unoccupied?
+
+
+SELECT count(*)
+FROM spot_types
+WHERE spot_types.p_occupied=0;
+ 
+
+
+
+
+--13. How many spots Motorcycle spots are unoccupied?
+
+SELECT count(*)
+FROM spot_types
+WHERE spot_types.p_occupied=0
+  AND spot_types.permit_type='Motorcycle';
+
+
+
+
+
+
+--14.  Get the average age for students currently parked 
+
+
+
+SELECT AVG(age)
+FROM person,
+     s_parks
+WHERE person.st_id = s_parks.st_id
+  AND person.p_id = s_parks.p_id;
+
+
+
+
+
+
+--15.  Find all of the parking spots WHERE the driver does not have a valid permit type
+	
+SELECT person.p_id AS personPID ,
+       spot_types.p_id AS spotPID,
+       person.permit_type AS personPermit,
+       spot_types.permit_type AS spotPermit
+FROM person,
+     spot_types
+WHERE spot_types.p_id = person.p_id
+  AND person.permit_type <> spot_types.permit_type;
+
+
+
+
+
+--16  Update the person table and give all the drivers tickets WHERE they do not have a valid   permit type
+
+
+
+UPDATE person
+SET ticket = 1
+WHERE person.st_id NOT IN
+    (SELECT person.st_id
+     FROM spot_types,
+          person
+     WHERE spot_types.p_id = person.p_id
+       AND person.permit_type =spot_types.permit_type);
+
+
+
+
+
+--17.	Find the average time length for each created event’s reserved parking
+
+
+SELECT AVG(julianday(endDate) - julianday(startDate))
+FROM taps_reserves;
+
+
+
+
+
+
+
+--18.	Find the name of the event which spans for the longest time
+
+
+
+SELECT event_title
+FROM
+  (SELECT MAX(julianday(endDate) - julianday(startDate)),
+          event_title
+   FROM taps_reserves);
+
+
+
+
+
+
+
+--19.	Find all of the events which overlap with each other
+	
+
+SELECT event1,
+       event2
+FROM
+  (SELECT target.event_title AS event1,
+          taps.event_title AS event2
+   FROM taps_reserves AS target,
+        taps_reserves AS taps
+   WHERE julianday(taps.endDate) <= julianday(target.endDate)
+     AND julianday(taps.startDate) >= julianday(target.startDate)
+     AND target.event_title <> taps.event_title);
+
+
+
+
+
+
+--20.	Find the total number of each permit type used and also calculate the percentage
+
+
+
+SELECT permit_type ,
+       COUNT(permit_type),
+       (COUNT(permit_type)*1.0/total)*100
+FROM s_parks ,
+  (SELECT COUNT(*) AS total
+   FROM s_parks)
+GROUP BY permit_type;
+
+
+
+
+
+
+--21.	4 TABLE QUERY: -- Find all of the parked drivers who are also taps employees
+
+SELECT DISTINCT person.name,
+                taps_parks.t_id AS Taps_ID,
+                taps_parks.permit_type AS Permit_Type
+FROM person,
+     s_parks,
+     spot_types,
+     taps_parks
+WHERE person.p_id=s_parks.p_id
+  AND s_parks.p_id=spot_types.p_id
+  AND spot_types.p_occupied =1
+  AND taps_parks.p_id = s_parks.p_id
+  AND taps_parks.row = s_parks.row
+  AND taps_parks.col = s_parks.col;
+
